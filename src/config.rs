@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::builder::{ArgAction, NonEmptyStringValueParser, StringValueParser};
+use clap::builder::{NonEmptyStringValueParser, StringValueParser};
 use hyper::Uri;
 use std::sync::OnceLock;
 
@@ -10,7 +10,8 @@ pub struct ConfigInner {
     pub discovery_endpoint: Uri,
     pub client_id: String,
     pub token_scopes: String,
-    pub additional_http_headers: Vec<String>,
+    pub login_hint: Option<String>,
+    pub login_prompt: Option<String>,
 }
 
 const fn const_unwrap_or(opt: Option<&'static str>, default: &'static str) -> &'static str {
@@ -51,10 +52,12 @@ fn new() -> Result<Config> {
                 .long("token-scopes")
                 .default_value("openid profile")
                 .value_parser(StringValueParser::new()),
-            clap::Arg::new("additional-http-headers")
-                .long("additional-http-header")
-                .action(ArgAction::Append)
+            clap::Arg::new("login-hint")
+                .long("login-hint")
                 .value_parser(NonEmptyStringValueParser::new()),
+            clap::Arg::new("login-prompt")
+                .long("login-prompt")
+                .value_parser(["none", "login", "consent", "select_account"]),
         ])
         .get_matches();
 
@@ -64,11 +67,8 @@ fn new() -> Result<Config> {
         discovery_endpoint: args.get_one::<Uri>("discovery-endpoint").unwrap().clone(),
         client_id: args.get_one::<String>("client-id").unwrap().clone(),
         token_scopes: args.get_one::<String>("token-scopes").unwrap().clone(),
-        additional_http_headers: args
-            .get_many::<String>("additional-http-headers")
-            .unwrap_or_default()
-            .map(Clone::clone)
-            .collect(),
+        login_hint: args.get_one::<String>("login-hint").map(Clone::clone),
+        login_prompt: args.get_one::<String>("login-prompt").map(Clone::clone),
     };
     Ok(std::sync::Arc::new(config))
 }

@@ -1,43 +1,73 @@
-use std::convert::Infallible;
-use std::net::{IpAddr, SocketAddr};
-use std::str::FromStr;
+use std::io::IsTerminal;
+use std::net::{SocketAddr, ToSocketAddrs};
+use std::process::Command;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use base64::prelude::*;
-use http_body_util::{BodyExt, Empty, Full};
-use hyper::body::{Buf, Bytes};
-use hyper::client::conn::http1;
+use http_body_util::Full;
+use hyper::body::Bytes;
 use hyper::server::conn::http1 as http1_server;
 use hyper::service::service_fn;
 use hyper::{Request, Response, Uri};
 use hyper_util::rt::TokioIo;
 use rand::Rng;
 use serde::Deserialize;
-use serde_json as json;
 use serde_urlencoded as urlencoded;
 use sha2::{Digest, Sha256};
-use std::net::{SocketAddr, ToSocketAddrs};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 
 mod config;
 
 async fn handle_auth_response(
+    endpoints: &OidcEndpoints,
     request: Request<hyper::body::Incoming>,
-) -> Result<Response<Full<Bytes>>, Infallible> {
+) -> Result<Response<Full<Bytes>>> {
     let config = config::app_config();
     let request_uri = request.uri();
+    eprintln!("request_uri: {:?}", request_uri.path());
     let redirect_uri = &config.redirect_uri;
-    if request_uri.scheme() == redirect_uri.scheme()
-        && request_uri.authority() == redirect_uri.authority()
-        && request_uri.host() == redirect_uri.host()
-        && request_uri.port() == redirect_uri.port()
-        && request_uri.path() == redirect_uri.path()
-    {
+    eprintln!("redirect_uri: {:?}", redirect_uri.path());
+
+    if request_uri.path() == redirect_uri.path() {
+        let query = request_uri
+            .query()
+            .expect("no query component in the request URI");
+        let query = urlencoded::from_str::<Vec<(&str, &str)>>(query)?;
+        let code = query
+            .into_iter()
+            .find(|i| i.0 == "code")
+            .expect("request does not contain an auth code")
+            .1;
+        let (_, verifier) = code_challenge();
+        let body = urlencoded::to_string([
+            ("client_id", config.client_id.as_str()),
+            ("scope", config.token_scopes.as_str()),
+            ("code", code),
+            ("redirect_uri", &config.redirect_uri.to_string().as_str()),
+            ("grant_type", "authorization_code"),
+            ("code_verifier", verifier.as_str()),
+        ])
+        .unwrap();
+        let response = reqwest::Client::new()
+            .post(endpoints.token_endpoint.as_ref().unwrap())
+            .body(body)
+            .header(
+                "Origin",
+                redirect_uri.scheme_str().unwrap().to_string()
+                    + "://"
+                    + redirect_uri.authority().unwrap().as_str(),
+            )
+            .send()
+            .await?;
+        let status = response.status();
+        let body_bytes = response.bytes().await?;
+        let json = String::from_utf8(body_bytes.to_vec())?;
+        eprintln!("token response: {status} {json}");
         Ok(Response::builder()
             .status(200)
-            .body(Full::new(Bytes::from("Hello, World!")))
+            .body(Full::new(Bytes::from(json)))
             .unwrap())
     } else {
         Ok(Response::builder()
@@ -49,32 +79,59 @@ async fn handle_auth_response(
     }
 }
 
-fn start_auth_code_flow() {
+fn start_auth_code_flow(endpoints: &OidcEndpoints) {
     let state = flow_state();
     let (code_challenge, _verifier) = code_challenge();
-    let auth_result = authenticate(code_challenge, state);
+    let auth_result = authenticate(endpoints, code_challenge, state);
     eprintln!("auth_code_flow: {auth_result:?}");
 }
 
-fn authenticate(code_challenge: &str, state: &str) -> Result<()> {
+#[cfg(target_os = "linux")]
+fn open_browser(uri: &str) -> Result<()> {
+    let _ = Command::new("xdg-open").arg(uri).spawn()?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn open_browser(uri: &str) -> Result<()> {
+    let _ = Command::new("rundll32")
+        .arg("url.dll,FileProtocolHandler")
+        .arg(uri)
+        .spawn()?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn open_browser(uri: &str) -> Result<()> {
+    let _ = Command::new("open").arg(uri).spawn()?;
+    Ok(())
+}
+
+fn authenticate(endpoints: &OidcEndpoints, code_challenge: &str, state: &str) -> Result<()> {
     let config = config::app_config();
     let client_id = &config.client_id;
-    let redirect_uri = &config.redirect_uri;
+    let redirect_uri = &config.redirect_uri.to_string();
     let scopes = &config.token_scopes;
-    let query_string = urlencoded::to_string([
+    let mut query = vec![
         ("response_type", "code"),
         ("code_challenge", code_challenge),
         ("code_challenge_method", "S256"),
         ("client_id", &client_id),
-        ("redirect_uri", &redirect_uri.to_string()),
+        ("redirect_uri", redirect_uri.as_str()),
         ("scope", &scopes),
         ("state", state),
-        ("prompt", "select_account"),
-        /*
-        ("login_hint", "SISKORO@tbdir.net")
-        ("prompt", "none")
-        */
-    ]);
+    ];
+    if let Some(hint) = config.login_hint.as_ref() {
+        query.push(("login_hint", hint))
+    }
+    if let Some(prompt) = config.login_prompt.as_ref() {
+        query.push(("prompt", prompt))
+    }
+    let query_string = urlencoded::to_string(query)?;
+    let auth_endpoint = endpoints.authorization_endpoint.as_ref().unwrap();
+    let uri = format!("{auth_endpoint}?{query_string}");
+    eprintln!("auth URL: {uri}");
+    open_browser(&uri)?;
     Ok(())
 }
 
@@ -119,12 +176,19 @@ fn default_port(uri: &Uri) -> u16 {
     }
 }
 
-fn http_uri_socket_addr(uri: &Uri) -> SocketAddr {
+fn http_uri_socket_addr(uri: &Uri) -> Result<SocketAddr> {
     let port = uri.port_u16().unwrap_or_else(|| default_port(uri));
     let host = uri.host().unwrap_or("127.0.0.1");
+    let host_port = host.to_string() + ":" + &port.to_string();
     eprintln!("host: {host}");
-    let ip_addr = IpAddr::from_str(host).unwrap();
-    SocketAddr::from((ip_addr, port))
+    if let Some(addr) = host_port.to_socket_addrs()?.next() {
+        Ok(addr)
+    } else {
+        Err(anyhow::anyhow!(
+            "cannot resolve socket address {}",
+            host_port
+        ))
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -212,50 +276,53 @@ struct OidcEndpoints {
     pub ui_locales_supported: Option<Vec<String>>,
 }
 
-async fn discover_oidc_endpoints() -> Result<()> {
+async fn discover_oidc_endpoints() -> Result<OidcEndpoints> {
     let config = config::app_config();
-    let uri = &config.redirect_uri;
-    let address = http_uri_socket_addr(uri);
+    let uri = &config.discovery_endpoint;
+    let endpoints = reqwest::get(uri.to_string())
+        .await?
+        .json::<OidcEndpoints>()
+        .await?;
+    eprintln!("OIDC endpoints: {endpoints:#?}");
+    Ok(endpoints)
+}
 
-    let stream = TcpStream::connect(address).await?;
-    let io = TokioIo::new(stream);
-    let (mut sender, conn) = http1::handshake(io).await?;
-    tokio::task::spawn(async move {
-        if let Err(err) = conn.await {
-            println!("Connection failed: {:?}", err);
-        }
-    });
+fn setup_logging(config: &config::Config) {
+    use tracing_subscriber::prelude::*;
+    let filter = tracing_subscriber::filter::targets::Targets::default()
+        .with_targets(vec![
+            ("rustls", tracing::Level::WARN),
+            ("polling", tracing::Level::WARN),
+            ("async_io", tracing::Level::WARN),
+            ("hyper", tracing::Level::INFO),
+            ("tokio_util", tracing::Level::DEBUG),
+        ])
+        .with_default(config.log_level);
 
-    let authority = config.redirect_uri.authority().unwrap();
-    let request = Request::builder()
-        .uri(&config.redirect_uri)
-        .header(hyper::header::HOST, authority.as_str())
-        .body(Empty::<Bytes>::new())?;
+    let ansi_colors_enabled = !cfg!(windows) && std::io::stdout().is_terminal();
+    let format = tracing_subscriber::fmt::layer()
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
+        .with_ansi(ansi_colors_enabled);
 
-    let response = sender.send_request(request).await?;
-    println!("Response status: {}", response.status());
-
-    let body = response.collect().await?.aggregate();
-    let endponts: OidcEndpoints = json::from_reader(body.reader())?;
-
-    eprintln!("OIDC endpoints: {endponts:?}");
-    Ok(())
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(format)
+        .init();
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = config::parse_args();
-    /*
     let config = config::app_config();
 
-    let addr = http_uri_socket_addr(&config.redirect_uri);
+    setup_logging(&config);
+
+    let addr = http_uri_socket_addr(&config.redirect_uri)?;
     let listener = TcpListener::bind(addr).await?;
-    */
 
-    discover_oidc_endpoints().await?;
+    let endpoints = discover_oidc_endpoints().await?;
 
-    /*
-    start_auth_code_flow();
+    start_auth_code_flow(&endpoints);
 
     let (stream, _) = listener.accept().await?;
 
@@ -265,8 +332,7 @@ async fn main() -> Result<()> {
 
     http1_server::Builder::new()
         // `service_fn` converts our function in a `Service`
-        .serve_connection(io, service_fn(handle_auth_response))
+        .serve_connection(io, service_fn(|r| handle_auth_response(&endpoints, r)))
         .await?;
-    */
     Ok(())
 }
