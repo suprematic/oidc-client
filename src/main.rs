@@ -17,6 +17,8 @@ use serde::Deserialize;
 use serde_urlencoded as urlencoded;
 use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
+#[allow(unused)]
+use tracing::{debug, error, info, trace, warn};
 
 mod config;
 
@@ -26,9 +28,9 @@ async fn handle_auth_response(
 ) -> Result<Response<Full<Bytes>>> {
     let config = config::app_config();
     let request_uri = request.uri();
-    eprintln!("request_uri: {:?}", request_uri.path());
+    trace!("request_uri: {:?}", request_uri.path());
     let redirect_uri = &config.redirect_uri;
-    eprintln!("redirect_uri: {:?}", redirect_uri.path());
+    trace!("redirect_uri: {:?}", redirect_uri.path());
 
     if request_uri.path() == redirect_uri.path() {
         let query = request_uri
@@ -64,7 +66,8 @@ async fn handle_auth_response(
         let status = response.status();
         let body_bytes = response.bytes().await?;
         let json = String::from_utf8(body_bytes.to_vec())?;
-        eprintln!("token response: {status} {json}");
+        debug!("token response: {status} {json}");
+        println!("{}", json);
         Ok(Response::builder()
             .status(200)
             .body(Full::new(Bytes::from(json)))
@@ -83,7 +86,7 @@ fn start_auth_code_flow(endpoints: &OidcEndpoints) {
     let state = flow_state();
     let (code_challenge, _verifier) = code_challenge();
     let auth_result = authenticate(endpoints, code_challenge, state);
-    eprintln!("auth_code_flow: {auth_result:?}");
+    debug!("auth_code_flow: {auth_result:?}");
 }
 
 #[cfg(target_os = "linux")]
@@ -130,7 +133,7 @@ fn authenticate(endpoints: &OidcEndpoints, code_challenge: &str, state: &str) ->
     let query_string = urlencoded::to_string(query)?;
     let auth_endpoint = endpoints.authorization_endpoint.as_ref().unwrap();
     let uri = format!("{auth_endpoint}?{query_string}");
-    eprintln!("auth URL: {uri}");
+    debug!("auth URL: {uri}");
     open_browser(&uri)?;
     Ok(())
 }
@@ -180,7 +183,6 @@ fn http_uri_socket_addr(uri: &Uri) -> Result<SocketAddr> {
     let port = uri.port_u16().unwrap_or_else(|| default_port(uri));
     let host = uri.host().unwrap_or("127.0.0.1");
     let host_port = host.to_string() + ":" + &port.to_string();
-    eprintln!("host: {host}");
     if let Some(addr) = host_port.to_socket_addrs()?.next() {
         Ok(addr)
     } else {
@@ -283,7 +285,7 @@ async fn discover_oidc_endpoints() -> Result<OidcEndpoints> {
         .await?
         .json::<OidcEndpoints>()
         .await?;
-    eprintln!("OIDC endpoints: {endpoints:#?}");
+    debug!("OIDC endpoints: {endpoints:#?}");
     Ok(endpoints)
 }
 
@@ -331,7 +333,6 @@ async fn main() -> Result<()> {
     let io = TokioIo::new(stream);
 
     http1_server::Builder::new()
-        // `service_fn` converts our function in a `Service`
         .serve_connection(io, service_fn(|r| handle_auth_response(&endpoints, r)))
         .await?;
     Ok(())
