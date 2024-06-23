@@ -22,3 +22,4 @@ sha2 = "0.10.8"
 serde_urlencoded = "0.7.1"
 serde_json = "1.0.117"
 serde = { version = "1.0.203", features = ["derive"] }
+syntect = "5.0"

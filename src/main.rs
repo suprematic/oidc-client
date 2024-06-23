@@ -109,6 +109,56 @@ struct OidcEndpoints {
     pub ui_locales_supported: Option<Vec<String>>,
 }
 
+async fn auth_success_page(response: reqwest::Response) -> Result<(String, json::Value)> {
+    let json_value: json::Value = response.json().await?;
+    let json = json::to_string_pretty(&json_value)?;
+    let json_hl = {
+        use syntect::easy::HighlightLines;
+        use syntect::highlighting::ThemeSet;
+        use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
+        use syntect::parsing::SyntaxSet;
+
+        // Load these once at the start of your program
+        let ps = SyntaxSet::load_defaults_newlines();
+        let ts = ThemeSet::load_defaults();
+
+        let syntax = ps.find_syntax_by_name("JSON").unwrap();
+        let mut h = HighlightLines::new(syntax, &ts.themes["Solarized (light)"]);
+        let regions = h.highlight_line(&json, &ps).unwrap();
+        styled_line_to_highlighted_html(&regions[..], IncludeBackground::No).unwrap()
+    };
+    Ok((
+        r"
+            <!DOCTYPE html>
+            <html lang='en'>
+            <head>
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <title>Javascript call a function after page load</title>
+            </head>
+            <body>
+
+            <pre>"
+            .to_string()
+            + json_hl.as_str()
+            + r"
+            </pre>
+            <script>
+            window.addEventListener('load', function() {
+                console.log('The page fully loaded, including all dependent resources!');
+                const req = new XMLHttpRequest();
+                req.open('GET', '/_/loaded');
+                req.send();
+            });
+            </script>
+
+            </body>
+            </html>
+            ",
+        json_value,
+    ))
+}
+
 async fn handle_request(
     endpoints: &OidcEndpoints,
     request: Request<hyper::body::Incoming>,
@@ -150,42 +200,20 @@ async fn handle_request(
             )
             .send()
             .await?;
-        let status = response.status();
-        let json_value: json::Value = response.json().await?;
-        let json = json::to_string_pretty(&json_value)?;
-        let script = r"
-            <!DOCTYPE html>
-            <html lang='en'>
-            <head>
-            <meta charset='UTF-8'>
-            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-            <title>Javascript call a function after page load</title>
-            </head>
-            <body>
-
-            <pre>"
-            .to_string()
-            + json.as_str()
-            + r"</pre>
-
-            <script>
-            window.addEventListener('load', function() {
-                console.log('The page fully loaded, including all dependent resources!');
-                const req = new XMLHttpRequest();
-                req.open('GET', '/_/loaded');
-                req.send();
-            });
-            </script>
-
-            </body>
-            </html>
-        ";
-        debug!("token response: {status} {json}");
-        println!("{}", json);
-        Ok(Response::builder()
-            .status(200)
-            .body(Full::new(Bytes::from(script)))
-            .unwrap())
+        if response.status().is_success() {
+            let (page, json_value) = auth_success_page(response).await?;
+            let json = json::to_string(&json_value)?;
+            println!("{}", json);
+            Ok(Response::builder()
+                .status(200)
+                .body(Full::new(Bytes::from(page)))
+                .unwrap())
+        } else {
+            Ok(Response::builder()
+                .status(response.status())
+                .body(Full::new(Bytes::from(response.bytes().await?)))
+                .unwrap())
+        }
     } else if request_uri.path() == "/_/loaded" {
         std::process::exit(0);
     } else {
