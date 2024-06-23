@@ -14,15 +14,17 @@ use hyper::{Request, Response, Uri};
 use hyper_util::rt::TokioIo;
 use rand::Rng;
 use serde::Deserialize;
+use serde_json as json;
 use serde_urlencoded as urlencoded;
 use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
+
 #[allow(unused)]
 use tracing::{debug, error, info, trace, warn};
 
 mod config;
 
-async fn handle_auth_response(
+async fn handle_request(
     endpoints: &OidcEndpoints,
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>> {
@@ -64,14 +66,43 @@ async fn handle_auth_response(
             .send()
             .await?;
         let status = response.status();
-        let body_bytes = response.bytes().await?;
-        let json = String::from_utf8(body_bytes.to_vec())?;
+        let json_value: json::Value = response.json().await?;
+        let json = json::to_string_pretty(&json_value)?;
+        let script = r"
+            <!DOCTYPE html>
+            <html lang='en'>
+            <head>
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <title>Javascript call a function after page load</title>
+            </head>
+            <body>
+
+            <pre>"
+            .to_string()
+            + json.as_str()
+            + r"</pre>
+
+            <script>
+            window.addEventListener('load', function() {
+                console.log('The page fully loaded, including all dependent resources!');
+                const req = new XMLHttpRequest();
+                req.open('GET', '/_/loaded');
+                req.send();
+            });
+            </script>
+
+            </body>
+            </html>
+        ";
         debug!("token response: {status} {json}");
         println!("{}", json);
         Ok(Response::builder()
             .status(200)
-            .body(Full::new(Bytes::from(json)))
+            .body(Full::new(Bytes::from(script)))
             .unwrap())
+    } else if request_uri.path() == "/_/loaded" {
+        std::process::exit(0);
     } else {
         Ok(Response::builder()
             .status(404)
@@ -326,14 +357,15 @@ async fn main() -> Result<()> {
 
     start_auth_code_flow(&endpoints);
 
-    let (stream, _) = listener.accept().await?;
+    loop {
+        let (stream, _) = listener.accept().await?;
 
-    // Use an adapter to access something implementing `tokio::io` traits as if they implement
-    // `hyper::rt` IO traits.
-    let io = TokioIo::new(stream);
+        // Use an adapter to access something implementing `tokio::io` traits as if they implement
+        // `hyper::rt` IO traits.
+        let io = TokioIo::new(stream);
 
-    http1_server::Builder::new()
-        .serve_connection(io, service_fn(|r| handle_auth_response(&endpoints, r)))
-        .await?;
-    Ok(())
+        http1_server::Builder::new()
+            .serve_connection(io, service_fn(|r| handle_request(&endpoints, r)))
+            .await?;
+    }
 }
