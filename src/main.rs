@@ -134,7 +134,7 @@ async fn auth_success_page(response: reqwest::Response) -> Result<(String, json:
             <head>
             <meta charset='UTF-8'>
             <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-            <title>Javascript call a function after page load</title>
+            <title>Authorized [oidc-client]</title>
             </head>
             <body style='background-color: #222'>
 
