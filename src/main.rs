@@ -1,5 +1,5 @@
 use std::io::IsTerminal;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::SocketAddr;
 use std::process::Command;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -326,16 +326,21 @@ fn default_port(uri: &Uri) -> u16 {
 fn http_uri_socket_addrs(uri: &Uri) -> Result<Vec<SocketAddr>> {
     let port = uri.port_u16().unwrap_or_else(|| default_port(uri));
     let host = uri.host().unwrap_or("127.0.0.1");
-    let host_port = host.to_string() + ":" + &port.to_string();
-    let addrs: Vec<_> = host_port.to_socket_addrs()?.collect();
+    let addrs = match dns_lookup::lookup_host(host) {
+        Ok(addrs) => addrs,
+        Err(error) => {
+            error!(%host, "cannot resolve ip address for");
+            return Err(anyhow::anyhow!(error));
+        }
+    };
     if addrs.is_empty() {
-        Err(anyhow::anyhow!(
-            "cannot resolve socket address {}",
-            host_port
-        ))
-    } else {
-        Ok(addrs)
+        return Err(anyhow::anyhow!("cannot resolve ip address for {}", host));
     }
+    let socket_addrs = addrs
+        .into_iter()
+        .map(|addr| SocketAddr::from((addr, port)))
+        .collect();
+    Ok(socket_addrs)
 }
 
 async fn discover_oidc_endpoints() -> Result<OidcEndpoints> {
