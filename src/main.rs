@@ -123,7 +123,7 @@ async fn auth_success_page(response: reqwest::Response) -> Result<(String, json:
         let ts = ThemeSet::load_defaults();
 
         let syntax = ps.find_syntax_by_name("JSON").unwrap();
-        let mut h = HighlightLines::new(syntax, &ts.themes["Solarized (light)"]);
+        let mut h = HighlightLines::new(syntax, &ts.themes["Solarized (dark)"]);
         let regions = h.highlight_line(&json, &ps).unwrap();
         styled_line_to_highlighted_html(&regions[..], IncludeBackground::No).unwrap()
     };
@@ -136,7 +136,7 @@ async fn auth_success_page(response: reqwest::Response) -> Result<(String, json:
             <meta name='viewport' content='width=device-width, initial-scale=1.0'>
             <title>Javascript call a function after page load</title>
             </head>
-            <body>
+            <body style='background-color: #222'>
 
             <pre>"
             .to_string()
