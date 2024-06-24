@@ -379,7 +379,9 @@ async fn main() -> Result<()> {
 
     setup_logging(&config);
 
-    let addrs = http_uri_socket_addrs(&config.redirect_uri)?;
+    let redirect_uri = &config.redirect_uri;
+    info!("listening on {:?}", redirect_uri.authority());
+    let addrs = http_uri_socket_addrs(redirect_uri)?;
     let listener = TcpListener::bind(addrs.as_slice()).await?;
 
     let endpoints = discover_oidc_endpoints().await?;
