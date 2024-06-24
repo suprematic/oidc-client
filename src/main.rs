@@ -26,7 +26,7 @@ mod config;
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
-struct OidcEndpoints {
+struct OidcConfiguration {
     // "https://server.example.com"
     pub issuer: Option<String>,
 
@@ -160,7 +160,7 @@ async fn auth_success_page(response: reqwest::Response) -> Result<(String, json:
 }
 
 async fn handle_request(
-    endpoints: &OidcEndpoints,
+    endpoints: &OidcConfiguration,
     request: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>> {
     let config = config::app_config();
@@ -226,7 +226,7 @@ async fn handle_request(
     }
 }
 
-fn start_auth_code_flow(endpoints: &OidcEndpoints) {
+fn start_auth_code_flow(endpoints: &OidcConfiguration) {
     let state = flow_state();
     let (code_challenge, _verifier) = code_challenge();
     let auth_result = authenticate(endpoints, code_challenge, state);
@@ -254,7 +254,7 @@ fn open_browser(uri: &str) -> Result<()> {
     Ok(())
 }
 
-fn authenticate(endpoints: &OidcEndpoints, code_challenge: &str, state: &str) -> Result<()> {
+fn authenticate(endpoints: &OidcConfiguration, code_challenge: &str, state: &str) -> Result<()> {
     let config = config::app_config();
     let client_id = &config.client_id;
     let redirect_uri = &config.redirect_uri.to_string();
@@ -343,12 +343,12 @@ fn http_uri_socket_addrs(uri: &Uri) -> Result<Vec<SocketAddr>> {
     Ok(socket_addrs)
 }
 
-async fn discover_oidc_endpoints() -> Result<OidcEndpoints> {
+async fn discover_oidc_endpoints() -> Result<OidcConfiguration> {
     let config = config::app_config();
     let uri = &config.discovery_endpoint;
     let endpoints = reqwest::get(uri.to_string())
         .await?
-        .json::<OidcEndpoints>()
+        .json::<OidcConfiguration>()
         .await?;
     debug!("OIDC endpoints: {endpoints:#?}");
     Ok(endpoints)
