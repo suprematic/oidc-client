@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::oidc::OidcConfiguration;
+use crate::oidc::{AuthUri, OidcConfiguration};
 use anyhow::Result;
 use http_body_util::Full;
 use hyper::body::Bytes;
@@ -139,36 +139,19 @@ async fn handle_request(
     }
 }
 
-fn start_auth_code_flow(endpoints: &OidcConfiguration) {
+fn start_auth_code_flow(endpoints: &OidcConfiguration) -> Result<()> {
     let state = flow_state();
     let (code_challenge, _verifier) = code_challenge();
-    let auth_result = authenticate(endpoints, code_challenge, state);
-    debug!("auth_code_flow: {auth_result:?}");
-}
-
-fn authenticate(endpoints: &OidcConfiguration, code_challenge: &str, state: &str) -> Result<()> {
     let config = config::app_config();
-    let client_id = &config.client_id;
-    let redirect_uri = &config.redirect_uri.to_string();
-    let scopes = &config.token_scopes;
-    let mut query = vec![
-        ("response_type", "code"),
-        ("code_challenge", code_challenge),
-        ("code_challenge_method", "S256"),
-        ("client_id", &client_id),
-        ("redirect_uri", redirect_uri.as_str()),
-        ("scope", &scopes),
-        ("state", state),
-    ];
-    if let Some(hint) = config.login_hint.as_ref() {
-        query.push(("login_hint", hint))
-    }
-    if let Some(prompt) = config.login_prompt.as_ref() {
-        query.push(("prompt", prompt))
-    }
-    let query_string = urlencoded::to_string(query)?;
-    let auth_endpoint = endpoints.authorization_endpoint.as_ref().unwrap();
-    let uri = format!("{auth_endpoint}?{query_string}");
+    let uri = AuthUri::for_code_flow(endpoints.authorization_endpoint.as_ref().unwrap())
+        .client_id(&config.client_id)
+        .redirect_uri(&config.redirect_uri.to_string())
+        .scope(&config.token_scopes)
+        .code_challenge(code_challenge, "S256")
+        .state(state)
+        .login_hint(config.login_hint.as_ref())
+        .prompt(config.login_prompt.as_ref())
+        .build()?;
     debug!("auth URL: {uri}");
     browser::open(&uri)?;
     Ok(())
@@ -258,7 +241,7 @@ async fn main() -> Result<()> {
     let uri = &config.discovery_endpoint;
     let endpoints = oidc::discover_oidc_endpoints(&uri.to_string()).await?;
 
-    start_auth_code_flow(&endpoints);
+    start_auth_code_flow(&endpoints)?;
 
     loop {
         let (stream, _) = listener.accept().await?;

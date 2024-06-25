@@ -1,4 +1,6 @@
-use anyhow::Result;
+use std::collections::HashSet;
+
+use anyhow::{anyhow, Result};
 use base64::prelude::*;
 use hyper::Uri;
 use rand::Rng;
@@ -123,4 +125,119 @@ pub async fn discover_oidc_endpoints(discovery_uri: &str) -> Result<OidcConfigur
         .await?;
     debug!("OIDC endpoints: {endpoints:#?}");
     Ok(endpoints)
+}
+
+pub enum AuthResponseType {
+    Code,
+}
+
+impl Into<String> for AuthResponseType {
+    fn into(self) -> String {
+        match self {
+            Self::Code => "code".into(),
+        }
+    }
+}
+
+impl Default for AuthResponseType {
+    fn default() -> Self {
+        Self::Code
+    }
+}
+
+/// https://login.microsoftonline.com/505cca53-5750-4134-9501-8d52d5df3cd1/oauth2/v2.0/authorize?response_type=code&code_challenge=xH59Ixp_8ctglP5C_6Aj9RaP-vU6MFJnN9KJnNDaByA&code_challenge_method=S256&client_id=39e5e7ed-4928-4f27-9751-2591fa6df86c&redirect_uri=http%3A%2F%2Flocalhost%3A4956%2Flogin&scope=openid+profile&state=1719290469650
+#[derive(Default)]
+pub struct AuthUri {
+    response_type: AuthResponseType,
+    endpoint: String,
+    code_challenge: Option<String>,
+    code_challenge_method: Option<String>,
+    client_id: Option<String>,
+    redirect_uri: Option<String>,
+    scopes: HashSet<String>,
+    state: Option<String>,
+    login_hint: Option<String>,
+    prompt: Option<String>,
+}
+
+impl AuthUri {
+    pub fn for_code_flow<T: Into<String>>(auth_endpoint: T) -> Self {
+        Self {
+            response_type: AuthResponseType::Code,
+            endpoint: auth_endpoint.into(),
+            ..Self::default()
+        }
+    }
+
+    pub fn code_challenge<C: Into<String>, M: Into<String>>(
+        mut self,
+        challenge: C,
+        method: M,
+    ) -> Self {
+        self.code_challenge = Some(challenge.into());
+        self.code_challenge_method = Some(method.into());
+        self
+    }
+
+    pub fn client_id<T: Into<String>>(mut self, id: T) -> Self {
+        self.client_id = Some(id.into());
+        self
+    }
+
+    pub fn redirect_uri<T: Into<String>>(mut self, uri: T) -> Self {
+        self.redirect_uri = Some(uri.into());
+        self
+    }
+
+    pub fn scope<T: Into<String>>(mut self, scope: T) -> Self {
+        self.scopes.insert(scope.into());
+        self
+    }
+
+    pub fn state<T: Into<String>>(mut self, state: T) -> Self {
+        self.state = Some(state.into());
+        self
+    }
+
+    pub fn login_hint<T: Into<String>>(mut self, hint: Option<T>) -> Self {
+        self.login_hint = hint.map(Into::into);
+        self
+    }
+
+    pub fn prompt<T: Into<String>>(mut self, prompt: Option<T>) -> Self {
+        self.prompt = prompt.map(Into::into);
+        self
+    }
+
+    pub fn build(self) -> Result<String> {
+        let response_type: String = self.response_type.into();
+        let code_challenge = self.code_challenge.ok_or(anyhow!("no code_challenge"))?;
+        let code_challenge_method = self
+            .code_challenge_method
+            .ok_or(anyhow!("no code_challenge_method"))?;
+        let client_id = self.client_id.ok_or(anyhow!("no client_id"))?;
+        let redirect_uri = self.redirect_uri.ok_or(anyhow!("no redirect_uri"))?;
+        let state = self.state.ok_or(anyhow!("no state"))?;
+        let scopes = self.scopes.clone().into_iter().collect::<Vec<_>>();
+        let scopes: String = scopes.join(" ");
+        let mut query = vec![
+            ("response_type", response_type.as_str()),
+            ("code_challenge", code_challenge.as_str()),
+            ("code_challenge_method", code_challenge_method.as_str()),
+            ("client_id", client_id.as_str()),
+            ("redirect_uri", redirect_uri.as_str()),
+            ("scope", scopes.as_str()),
+            ("state", state.as_str()),
+        ];
+        if let Some(hint) = self.login_hint.as_ref() {
+            query.push(("login_hint", hint))
+        }
+        if let Some(prompt) = self.prompt.as_ref() {
+            query.push(("prompt", prompt))
+        }
+        let query_string = urlencoded::to_string(query).unwrap();
+        let auth_endpoint = &self.endpoint;
+        let uri = format!("{auth_endpoint}?{query_string}");
+        Ok(uri)
+    }
 }
