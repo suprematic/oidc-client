@@ -42,32 +42,29 @@ async fn auth_success_page(response: reqwest::Response) -> Result<(String, json:
     };
     Ok((
         r"
-            <!DOCTYPE html>
-            <html lang='en'>
-            <head>
-            <meta charset='UTF-8'>
-            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-            <title>Authorized [oidc-client]</title>
-            </head>
-            <body style='background-color: #222'>
-
-            <pre>"
+        <!DOCTYPE html>
+        <html lang='en'>
+        <head>
+        <meta charset='UTF-8'>
+        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+        <title>Authorized [oidc-client]</title>
+        </head>
+        <body style='background-color: #222'>
+        <pre>"
             .to_string()
             + json_hl.as_str()
             + r"
-            </pre>
-            <script>
-            window.addEventListener('load', function() {
-                console.log('The page fully loaded, including all dependent resources!');
-                const req = new XMLHttpRequest();
-                req.open('GET', '/_/loaded');
-                req.send();
-            });
-            </script>
-
-            </body>
-            </html>
-            ",
+        </pre>
+        <script>
+        window.addEventListener('load', function() {
+            const req = new XMLHttpRequest();
+            req.open('GET', '/_/loaded');
+            req.send();
+        });
+        </script>
+        </body>
+        </html>
+        ",
         json_value,
     ))
 }
