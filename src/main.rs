@@ -223,12 +223,11 @@ fn setup_logging(config: &config::Config) {
 async fn main() -> Result<()> {
     let _ = config::parse_args();
     let config = config::app_config();
-
     setup_logging(&config);
 
     let redirect_uri = &config.redirect_uri;
-    info!("listening on {:?}", redirect_uri.authority());
     let addrs = http_uri_socket_addrs(redirect_uri)?;
+    info!("listening on {redirect_uri} {:?}", addrs);
     let listener = TcpListener::bind(addrs.as_slice()).await?;
 
     let uri = &config.discovery_endpoint;
