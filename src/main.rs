@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::oidc::{AuthUri, OidcConfiguration};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::server::conn::http1 as http1_server;
@@ -36,8 +36,8 @@ async fn auth_success_page(response: reqwest::Response) -> Result<(String, json:
 
         let syntax = ps.find_syntax_by_name("JSON").unwrap();
         let mut h = HighlightLines::new(syntax, &ts.themes["Solarized (dark)"]);
-        let regions = h.highlight_line(&json, &ps).unwrap();
-        styled_line_to_highlighted_html(&regions[..], IncludeBackground::No).unwrap()
+        let regions = h.highlight_line(&json, &ps)?;
+        styled_line_to_highlighted_html(&regions[..], IncludeBackground::No)?
     };
     Ok((
         r"
@@ -105,7 +105,10 @@ async fn handle_request(
 
     if request_uri.path() == redirect_uri.path() {
         let auth_code_response = oidc::auth_code_response(request_uri, state)?;
-        let token_endpoint = endpoints.token_endpoint.as_ref().unwrap();
+        let token_endpoint = endpoints
+            .token_endpoint
+            .as_ref()
+            .ok_or(anyhow!("no token_endpoint in OIDC configutation"))?;
         let response = get_auth_tokens(token_endpoint, &auth_code_response.code).await?;
         if response.status().is_success() {
             let (page, json_value) = auth_success_page(response).await?;
@@ -137,7 +140,11 @@ fn start_auth_code_flow(endpoints: &OidcConfiguration) -> Result<()> {
     let state = flow_state();
     let (code_challenge, _verifier) = code_challenge();
     let config = config::app_config();
-    let uri = AuthUri::for_code_flow(endpoints.authorization_endpoint.as_ref().unwrap())
+    let authorization_endpoint = endpoints
+        .authorization_endpoint
+        .as_ref()
+        .ok_or(anyhow!("no autorizatoin_endpoint in OIDC configuration"))?;
+    let uri = AuthUri::for_code_flow(authorization_endpoint)
         .client_id(&config.client_id)
         .redirect_uri(&config.redirect_uri.to_string())
         .scope(&config.token_scopes)
