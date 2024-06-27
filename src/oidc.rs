@@ -145,11 +145,8 @@ pub fn gen_code_challenge() -> (String, String) {
 }
 
 pub async fn discover_oidc_endpoints(discovery_uri: &str) -> Result<OidcConfiguration> {
-    let endpoints = reqwest::get(discovery_uri)
-        .await?
-        .json::<OidcConfiguration>()
-        .await?;
-    debug!("OIDC endpoints: {endpoints:#?}");
+    let response = reqwest::get(discovery_uri).await?;
+    let endpoints = response.json::<OidcConfiguration>().await?;
     Ok(endpoints)
 }
 
