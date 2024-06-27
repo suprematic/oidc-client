@@ -145,6 +145,83 @@ impl Default for AuthResponseType {
     }
 }
 
+enum GranType {
+    AuthorizationCode,
+}
+
+impl Default for GranType {
+    fn default() -> Self {
+        GranType::AuthorizationCode
+    }
+}
+
+impl Into<String> for GranType {
+    fn into(self) -> String {
+        match self {
+            Self::AuthorizationCode => "authorization_code".into(),
+        }
+    }
+}
+/// https://login.microsoftonline.com/505cca53-5750-4134-9501-8d52d5df3cd1/oauth2/v2.0/authorize?response_type=code&code_challenge=xH59Ixp_8ctglP5C_6Aj9RaP-vU6MFJnN9KJnNDaByA&code_challenge_method=S256&client_id=39e5e7ed-4928-4f27-9751-2591fa6df86c&redirect_uri=http%3A%2F%2Flocalhost%3A4956%2Flogin&scope=openid+profile&state=1719290469650
+#[derive(Default)]
+pub struct TokenRequestParams {
+    grant_type: GranType,
+    code: String,
+    redirect_uri: Option<String>,
+    scopes: HashSet<String>,
+    client_id: Option<String>,
+    code_verifier: Option<String>,
+}
+
+impl TokenRequestParams {
+    pub fn for_auth_code<T: Into<String>>(code: T) -> Self {
+        Self {
+            grant_type: GranType::AuthorizationCode,
+            code: code.into(),
+            ..Default::default()
+        }
+    }
+
+    pub fn redirect_uri<T: Into<String>>(mut self, uri: T) -> Self {
+        self.redirect_uri = Some(uri.into());
+        self
+    }
+
+    pub fn scope<T: Into<String>>(mut self, scope: T) -> Self {
+        self.scopes.insert(scope.into());
+        self
+    }
+
+    pub fn client_id<T: Into<String>>(mut self, id: T) -> Self {
+        self.client_id = Some(id.into());
+        self
+    }
+
+    pub fn code_verifier<T: Into<String>>(mut self, code_verifier: T) -> Self {
+        self.code_verifier = Some(code_verifier.into());
+        self
+    }
+
+    pub fn build(self) -> Result<String> {
+        let grant_type: String = self.grant_type.into();
+        let scopes = self.scopes.clone().into_iter().collect::<Vec<_>>();
+        let scopes: String = scopes.join(" ");
+        let redirect_uri = self.redirect_uri.ok_or(anyhow!("no redirect_uri"))?;
+        let client_id = self.client_id.ok_or(anyhow!("no client_id"))?;
+        let code_verifier = self.code_verifier.ok_or(anyhow!("no code_verifier"))?;
+        let query = vec![
+            ("grant_type", grant_type.as_str()),
+            ("redirect_uri", redirect_uri.as_str()),
+            ("code", self.code.as_str()),
+            ("scope", scopes.as_str()),
+            ("client_id", client_id.as_str()),
+            ("code_verifier", code_verifier.as_str()),
+        ];
+        let params = urlencoded::to_string(query)?;
+        Ok(params)
+    }
+}
+
 /// https://login.microsoftonline.com/505cca53-5750-4134-9501-8d52d5df3cd1/oauth2/v2.0/authorize?response_type=code&code_challenge=xH59Ixp_8ctglP5C_6Aj9RaP-vU6MFJnN9KJnNDaByA&code_challenge_method=S256&client_id=39e5e7ed-4928-4f27-9751-2591fa6df86c&redirect_uri=http%3A%2F%2Flocalhost%3A4956%2Flogin&scope=openid+profile&state=1719290469650
 #[derive(Default)]
 pub struct AuthUri {

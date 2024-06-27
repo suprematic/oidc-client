@@ -12,7 +12,6 @@ use hyper::service::service_fn;
 use hyper::{Request, Response, Uri};
 use hyper_util::rt::TokioIo;
 use serde_json as json;
-use serde_urlencoded as urlencoded;
 use tokio::net::TcpListener;
 
 #[allow(unused)]
@@ -73,15 +72,12 @@ async fn get_auth_tokens(token_endpoint: &str, auth_code: &str) -> Result<reqwes
     let config = config::app_config();
     let redirect_uri = &config.redirect_uri;
     let (_, verifier) = code_challenge();
-    let body = urlencoded::to_string([
-        ("client_id", config.client_id.as_str()),
-        ("scope", config.token_scopes.as_str()),
-        ("code", auth_code),
-        ("redirect_uri", redirect_uri.to_string().as_str()),
-        ("grant_type", "authorization_code"),
-        ("code_verifier", verifier.as_str()),
-    ])
-    .unwrap();
+    let body = oidc::TokenRequestParams::for_auth_code(auth_code)
+        .client_id(&config.client_id)
+        .scope(&config.token_scopes)
+        .redirect_uri(&redirect_uri.to_string())
+        .code_verifier(verifier)
+        .build()?;
     let response = reqwest::Client::new()
         .post(token_endpoint)
         .body(body)
