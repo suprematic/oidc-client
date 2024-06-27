@@ -101,11 +101,12 @@ async fn handle_request(
     trace!("request_uri: {:?}", request_uri.path());
     let redirect_uri = &config.redirect_uri;
     trace!("redirect_uri: {:?}", redirect_uri.path());
+    let state = flow_state();
 
     if request_uri.path() == redirect_uri.path() {
-        let code = oidc::auth_code(request_uri)?.expect("request does not contain an auth code");
+        let auth_code_response = oidc::auth_code_response(request_uri, state)?;
         let token_endpoint = endpoints.token_endpoint.as_ref().unwrap();
-        let response = get_auth_tokens(token_endpoint, code).await?;
+        let response = get_auth_tokens(token_endpoint, &auth_code_response.code).await?;
         if response.status().is_success() {
             let (page, json_value) = auth_success_page(response).await?;
             let json = json::to_string(&json_value)?;

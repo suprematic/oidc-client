@@ -96,11 +96,37 @@ pub struct OidcConfiguration {
     pub ui_locales_supported: Option<Vec<String>>,
 }
 
-pub fn auth_code<'a>(uri: &'a Uri) -> Result<Option<&'a str>> {
+pub struct AuthCodeResponse {
+    pub code: String,
+    #[allow(unused)]
+    pub state: String,
+}
+
+pub fn auth_code_response<'a>(uri: &'a Uri, flow_state: &str) -> Result<AuthCodeResponse> {
     let query = uri.query().expect("no query component in the request URI");
     let query = urlencoded::from_str::<Vec<(&str, &str)>>(query)?;
-    let code = query.into_iter().find(|i| i.0 == "code").map(|i| i.1);
-    Ok(code)
+    let code = query
+        .iter()
+        .find(|i| i.0 == "code")
+        .map(|i| i.1.to_string());
+    let state = query
+        .iter()
+        .find(|i| i.0 == "state")
+        .map(|i| i.1.to_string());
+    match (code, state) {
+        (Some(code), Some(state)) => {
+            if state != flow_state {
+                return Err(anyhow::anyhow!(
+                    "state doesnt match: expected={}, actual={}",
+                    state,
+                    flow_state
+                ));
+            }
+            Ok(AuthCodeResponse { code, state })
+        }
+        (None, _) => Err(anyhow::anyhow!("no auth code")),
+        (Some(_), None) => Err(anyhow::anyhow!("no state")),
+    }
 }
 
 fn gen_code_verifier() -> String {
