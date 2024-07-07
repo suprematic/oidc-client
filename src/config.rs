@@ -21,6 +21,25 @@ const fn const_unwrap_or(opt: Option<&'static str>, default: &'static str) -> &'
     }
 }
 
+fn wrap_at(s: &str, at: usize) -> String {
+    let words = s.split(&[' ', '\t']).filter(|l| !l.is_empty());
+    let mut wrapped = vec![];
+    let mut line = String::new();
+    for w in words {
+        if !line.is_empty() && line.len() + w.len() >= at {
+            wrapped.push(line);
+            line = "".into()
+        }
+        line = line + w + " ";
+    }
+    wrapped.push(line);
+    wrapped.join("\n")
+}
+
+fn wrap_help(s: &str) -> String {
+    wrap_at(s, 70)
+}
+
 pub type Config = std::sync::Arc<ConfigInner>;
 
 pub(crate) const VERSION: &str = clap::crate_version!();
@@ -34,29 +53,42 @@ fn new() -> Result<Config> {
         .args(&[
             clap::Arg::new("log")
                 .long("log")
+                .help(wrap_help("Log level"))
                 .value_parser(clap::value_parser!(tracing::Level))
                 .default_value(tracing::Level::ERROR.as_str()),
             clap::Arg::new("redirect-uri")
                 .long("redirect-uri")
+                .help(wrap_help(
+                    "Redirect URI to use in the authorization request",
+                ))
                 .required(true)
                 .value_parser(clap::value_parser!(Uri)),
             clap::Arg::new("discovery-endpoint")
                 .long("discovery-endpoint")
+                .help(wrap_help("OIDC configuration URI"))
                 .required(true)
                 .value_parser(clap::value_parser!(Uri)),
             clap::Arg::new("client-id")
                 .long("client-id")
+                .help(wrap_help("OIDC client ID obtaining the token(s)"))
                 .required(true)
                 .value_parser(NonEmptyStringValueParser::new()),
             clap::Arg::new("token-scopes")
                 .long("token-scopes")
+                .help(wrap_help("Space-separated OIDC scope values"))
                 .default_value("openid profile")
                 .value_parser(StringValueParser::new()),
             clap::Arg::new("login-hint")
                 .long("login-hint")
+                .help(wrap_help(
+                    "Hint to the authorization server about the user login identifier",
+                ))
                 .value_parser(NonEmptyStringValueParser::new()),
             clap::Arg::new("login-prompt")
                 .long("login-prompt")
+                .help(wrap_help(
+                    "Space-delimited list that specifies whether the authorization server prompts the user for reauthentication and consent"
+                ))
                 .value_parser(["none", "login", "consent", "select_account"]),
         ])
         .get_matches();
