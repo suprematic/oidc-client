@@ -65,6 +65,7 @@ fn new() -> Result<Config> {
                 .value_parser(clap::value_parser!(Uri)),
             clap::Arg::new("discovery-endpoint")
                 .long("discovery-endpoint")
+                .alias("oidc-configuration-uri")
                 .help(wrap_help("OIDC configuration URI"))
                 .required(true)
                 .value_parser(clap::value_parser!(Uri)),
