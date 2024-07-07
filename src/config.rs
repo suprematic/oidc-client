@@ -75,7 +75,8 @@ fn new() -> Result<Config> {
                 .required(true)
                 .value_parser(NonEmptyStringValueParser::new()),
             clap::Arg::new("token-scopes")
-                .long("token-scopes")
+                .long("scopes")
+                .alias("token-scopes")
                 .help(wrap_help("Space-separated OIDC scope values"))
                 .default_value("openid profile")
                 .value_parser(StringValueParser::new()),
