@@ -1,5 +1,8 @@
 use anyhow::Result;
-use clap::builder::{NonEmptyStringValueParser, StringValueParser};
+use clap::{
+    builder::{NonEmptyStringValueParser, StringValueParser},
+    ArgAction,
+};
 use hyper::Uri;
 use std::sync::OnceLock;
 
@@ -9,7 +12,7 @@ pub struct ConfigInner {
     pub redirect_uri: Uri,
     pub discovery_endpoint: Uri,
     pub client_id: String,
-    pub token_scopes: String,
+    pub token_scopes: Vec<String>,
     pub login_hint: Option<String>,
     pub login_prompt: Option<String>,
 }
@@ -74,12 +77,19 @@ fn new() -> Result<Config> {
                 .help(wrap_help("OIDC client ID obtaining the token(s)"))
                 .required(true)
                 .value_parser(NonEmptyStringValueParser::new()),
-            clap::Arg::new("token-scopes")
+            clap::Arg::new("scopes")
                 .long("scopes")
                 .alias("token-scopes")
+                .conflicts_with("scope")
                 .help(wrap_help("Space-separated OIDC scope values"))
                 .default_value("openid profile")
                 .value_parser(StringValueParser::new()),
+            clap::Arg::new("scope")
+                .long("scope")
+                .help(wrap_help("OIDC scope value"))
+                .value_parser(StringValueParser::new())
+                .action(ArgAction::Append)
+                .num_args(1),
             clap::Arg::new("login-hint")
                 .long("login-hint")
                 .help(wrap_help(
@@ -95,12 +105,16 @@ fn new() -> Result<Config> {
         ])
         .get_matches();
 
+    let scopes = args.get_one::<String>("scopes").unwrap().clone();
     let config = ConfigInner {
         log_level: *args.get_one("log").unwrap_or(&tracing::Level::INFO),
         redirect_uri: args.get_one::<Uri>("redirect-uri").unwrap().clone(),
         discovery_endpoint: args.get_one::<Uri>("discovery-endpoint").unwrap().clone(),
         client_id: args.get_one::<String>("client-id").unwrap().clone(),
-        token_scopes: args.get_one::<String>("token-scopes").unwrap().clone(),
+        token_scopes: args
+            .get_many::<String>("scope")
+            .map(|scopes| scopes.map(Clone::clone).collect())
+            .unwrap_or(vec![scopes]),
         login_hint: args.get_one::<String>("login-hint").map(Clone::clone),
         login_prompt: args.get_one::<String>("login-prompt").map(Clone::clone),
     };

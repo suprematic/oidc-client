@@ -74,7 +74,7 @@ async fn get_auth_tokens(token_endpoint: &str, auth_code: &str) -> Result<reqwes
     let (_, verifier) = code_challenge();
     let body = oidc::TokenRequestParams::for_auth_code(auth_code)
         .client_id(&config.client_id)
-        .scope(&config.token_scopes)
+        .scope(&config.token_scopes.join(" "))
         .redirect_uri(&redirect_uri.to_string())
         .code_verifier(verifier)
         .build()?;
@@ -147,7 +147,7 @@ fn start_auth_code_flow(endpoints: &OidcConfiguration) -> Result<()> {
     let uri = AuthUri::for_code_flow(authorization_endpoint)
         .client_id(&config.client_id)
         .redirect_uri(&config.redirect_uri.to_string())
-        .scope(&config.token_scopes)
+        .scope(&config.token_scopes.join(" "))
         .code_challenge(code_challenge, "S256")
         .state(state)
         .login_hint(config.login_hint.as_ref())
