@@ -232,6 +232,7 @@ async fn main() -> Result<()> {
     let _ = config::parse_args();
     let config = config::app_config();
     setup_logging(&config);
+    debug!(?config);
 
     let redirect_uri = &config.redirect_uri;
     let addrs = http_uri_socket_addrs(redirect_uri)?;
