@@ -4,6 +4,16 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.79"
 
+build = "build.rs"
+
+[build-dependencies]
+clap_complete = "4.5.7"
+clap = { version = "4.5.7", features = ["env", "cargo"] }
+hyper = { version = "1", default-features = false }
+anyhow = "1.0.86"
+tracing = "0.1.40"
+const_format = "0.2.32"
+
 [dependencies]
 hyper = { version = "1", features = ["server"] }
 reqwest = { version = "0.12", features = [

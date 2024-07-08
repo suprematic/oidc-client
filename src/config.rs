@@ -49,8 +49,8 @@ pub(crate) const VERSION: &str = clap::crate_version!();
 pub(crate) const COMMIT_HASH: &str = const_unwrap_or(option_env!("COMMIT_HASH"), "deadbeef");
 pub(crate) const FULL_VERSION: &str = const_format::formatcp!("{} {}", VERSION, COMMIT_HASH);
 
-fn new() -> Result<Config> {
-    let args = clap::command!()
+fn cli() -> clap::Command {
+    clap::command!()
         .version(FULL_VERSION)
         .author("SUPREMATIC Technology Arts GmbH")
         .args(&[
@@ -103,7 +103,10 @@ fn new() -> Result<Config> {
                 ))
                 .value_parser(["none", "login", "consent", "select_account"]),
         ])
-        .get_matches();
+}
+
+fn new() -> Result<Config> {
+    let args = cli().get_matches();
 
     let scopes = args.get_one::<String>("scopes").unwrap().clone();
     let config = ConfigInner {
