@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use tracing::{debug, error, info, trace, warn};
 
 #[derive(Deserialize, Debug)]
-#[allow(dead_code)]
+#[allow(unused)]
 pub struct OidcConfiguration {
     // "https://server.example.com"
     pub issuer: Option<String>,
