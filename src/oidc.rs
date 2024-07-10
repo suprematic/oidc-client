@@ -169,15 +169,15 @@ impl Default for AuthResponseType {
 }
 
 #[derive(Default)]
-enum GranType {
+enum GrantType {
     #[default]
     AuthorizationCode,
 }
 
-impl From<GranType> for String {
-    fn from(val: GranType) -> String {
+impl From<GrantType> for String {
+    fn from(val: GrantType) -> String {
         match val {
-            GranType::AuthorizationCode => "authorization_code".into(),
+            GrantType::AuthorizationCode => "authorization_code".into(),
         }
     }
 }
@@ -185,7 +185,7 @@ impl From<GranType> for String {
 /// https://login.microsoftonline.com/505cca53-5750-4134-9501-8d52d5df3cd1/oauth2/v2.0/authorize?response_type=code&code_challenge=xH59Ixp_8ctglP5C_6Aj9RaP-vU6MFJnN9KJnNDaByA&code_challenge_method=S256&client_id=39e5e7ed-4928-4f27-9751-2591fa6df86c&redirect_uri=http%3A%2F%2Flocalhost%3A4956%2Flogin&scope=openid+profile&state=1719290469650
 #[derive(Default)]
 pub struct TokenRequestParams {
-    grant_type: GranType,
+    grant_type: GrantType,
     code: String,
     redirect_uri: Option<String>,
     scopes: HashSet<String>,
@@ -196,7 +196,7 @@ pub struct TokenRequestParams {
 impl TokenRequestParams {
     pub fn for_auth_code<T: Into<String>>(code: T) -> Self {
         Self {
-            grant_type: GranType::AuthorizationCode,
+            grant_type: GrantType::AuthorizationCode,
             code: code.into(),
             ..Default::default()
         }
