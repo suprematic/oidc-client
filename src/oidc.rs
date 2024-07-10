@@ -102,7 +102,7 @@ pub struct AuthCodeResponse {
     pub state: String,
 }
 
-pub fn auth_code_response<'a>(uri: &'a Uri, flow_state: &str) -> Result<AuthCodeResponse> {
+pub fn auth_code_response(uri: &Uri, flow_state: &str) -> Result<AuthCodeResponse> {
     let query = uri.query().expect("no query component in the request URI");
     let query = urlencoded::from_str::<Vec<(&str, &str)>>(query)?;
     let code = query
@@ -154,10 +154,10 @@ pub enum AuthResponseType {
     Code,
 }
 
-impl Into<String> for AuthResponseType {
-    fn into(self) -> String {
-        match self {
-            Self::Code => "code".into(),
+impl From<AuthResponseType> for String {
+    fn from(val: AuthResponseType) -> Self {
+        match val {
+            AuthResponseType::Code => "code".into(),
         }
     }
 }
@@ -168,23 +168,20 @@ impl Default for AuthResponseType {
     }
 }
 
+#[derive(Default)]
 enum GranType {
+    #[default]
     AuthorizationCode,
 }
 
-impl Default for GranType {
-    fn default() -> Self {
-        GranType::AuthorizationCode
-    }
-}
-
-impl Into<String> for GranType {
-    fn into(self) -> String {
-        match self {
-            Self::AuthorizationCode => "authorization_code".into(),
+impl From<GranType> for String {
+    fn from(val: GranType) -> String {
+        match val {
+            GranType::AuthorizationCode => "authorization_code".into(),
         }
     }
 }
+
 /// https://login.microsoftonline.com/505cca53-5750-4134-9501-8d52d5df3cd1/oauth2/v2.0/authorize?response_type=code&code_challenge=xH59Ixp_8ctglP5C_6Aj9RaP-vU6MFJnN9KJnNDaByA&code_challenge_method=S256&client_id=39e5e7ed-4928-4f27-9751-2591fa6df86c&redirect_uri=http%3A%2F%2Flocalhost%3A4956%2Flogin&scope=openid+profile&state=1719290469650
 #[derive(Default)]
 pub struct TokenRequestParams {

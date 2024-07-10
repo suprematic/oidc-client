@@ -74,8 +74,8 @@ async fn get_auth_tokens(token_endpoint: &str, auth_code: &str) -> Result<reqwes
     let (_, verifier) = code_challenge();
     let body = oidc::TokenRequestParams::for_auth_code(auth_code)
         .client_id(&config.client_id)
-        .scope(&config.token_scopes.join(" "))
-        .redirect_uri(&redirect_uri.to_string())
+        .scope(config.token_scopes.join(" "))
+        .redirect_uri(redirect_uri.to_string())
         .code_verifier(verifier)
         .build()?;
     let response = reqwest::Client::new()
@@ -121,7 +121,7 @@ async fn handle_request(
         } else {
             Ok(Response::builder()
                 .status(response.status())
-                .body(Full::new(Bytes::from(response.bytes().await?)))
+                .body(Full::new(response.bytes().await?))
                 .unwrap())
         }
     } else if request_uri.path() == "/_/loaded" {
@@ -146,8 +146,8 @@ fn start_auth_code_flow(endpoints: &OidcConfiguration) -> Result<()> {
         .ok_or(anyhow!("no autorizatoin_endpoint in OIDC configuration"))?;
     let uri = AuthUri::for_code_flow(authorization_endpoint)
         .client_id(&config.client_id)
-        .redirect_uri(&config.redirect_uri.to_string())
-        .scope(&config.token_scopes.join(" "))
+        .redirect_uri(config.redirect_uri.to_string())
+        .scope(config.token_scopes.join(" "))
         .code_challenge(code_challenge, "S256")
         .state(state)
         .login_hint(config.login_hint.as_ref())
@@ -231,7 +231,7 @@ fn setup_logging(config: &config::Config) {
 async fn main() -> Result<()> {
     let _ = config::parse_args();
     let config = config::app_config();
-    setup_logging(&config);
+    setup_logging(config);
     debug!(?config);
 
     let redirect_uri = &config.redirect_uri;

@@ -118,8 +118,8 @@ fn new() -> Result<Config> {
             .get_many::<String>("scope")
             .map(|scopes| scopes.map(Clone::clone).collect())
             .unwrap_or(vec![scopes]),
-        login_hint: args.get_one::<String>("login-hint").map(Clone::clone),
-        login_prompt: args.get_one::<String>("login-prompt").map(Clone::clone),
+        login_hint: args.get_one::<String>("login-hint").cloned(),
+        login_prompt: args.get_one::<String>("login-prompt").cloned(),
     };
     Ok(std::sync::Arc::new(config))
 }
