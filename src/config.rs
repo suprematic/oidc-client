@@ -3,6 +3,7 @@ use clap::{
     builder::{NonEmptyStringValueParser, StringValueParser},
     ArgAction,
 };
+use clap_complete::Shell;
 use hyper::Uri;
 use std::sync::OnceLock;
 
@@ -64,18 +65,18 @@ fn cli() -> clap::Command {
                 .help(wrap_help(
                     "Redirect URI to use in the authorization request",
                 ))
-                .required(true)
+                .required_unless_present("print-completions")
                 .value_parser(clap::value_parser!(Uri)),
             clap::Arg::new("discovery-endpoint")
                 .long("discovery-endpoint")
                 .alias("oidc-configuration-uri")
                 .help(wrap_help("OIDC configuration URI"))
-                .required(true)
+                .required_unless_present("print-completions")
                 .value_parser(clap::value_parser!(Uri)),
             clap::Arg::new("client-id")
                 .long("client-id")
                 .help(wrap_help("OIDC client ID obtaining the token(s)"))
-                .required(true)
+                .required_unless_present("print-completions")
                 .value_parser(NonEmptyStringValueParser::new()),
             clap::Arg::new("scopes")
                 .long("scopes")
@@ -102,11 +103,24 @@ fn cli() -> clap::Command {
                     "Space-delimited list that specifies whether the authorization server prompts the user for reauthentication and consent"
                 ))
                 .value_parser(["none", "login", "consent", "select_account"]),
+            clap::Arg::new("print-completions")
+                .long("print-completions")
+                .value_name("SHELL")
+                .help("Print shell completions.")
+                .value_parser(clap::value_parser!(clap_complete::Shell)),
         ])
 }
 
 fn new() -> Result<Config> {
     let args = cli().get_matches();
+
+    if let Some(shell) = args.get_one::<Shell>("print-completions").copied() {
+        let mut cmd = cli();
+        eprintln!("Generating completion file for {shell}...");
+        let name = cmd.get_name().to_string();
+        clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+        std::process::exit(0);
+    }
 
     let scopes = args.get_one::<String>("scopes").unwrap().clone();
     let config = ConfigInner {

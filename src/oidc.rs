@@ -130,7 +130,7 @@ pub fn auth_code_response(uri: &Uri, flow_state: &str) -> Result<AuthCodeRespons
 }
 
 fn gen_code_verifier() -> String {
-    let bytes = rand::thread_rng().gen::<u32>().to_ne_bytes();
+    let bytes = rand::rng().random::<u32>().to_ne_bytes();
     BASE64_URL_SAFE_NO_PAD.encode(bytes)
 }
 
